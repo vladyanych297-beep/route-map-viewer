@@ -1,0 +1,20 @@
+{
+  "version": "1",
+  "lines": [
+    {
+      "flag": "Демонстрационный маршрут",
+      "length": 8976.4,
+      "total_points": 7,
+      "type": 0,
+      "points": [
+        { "flag": 0, "id": 1, "latitude": 55.7486, "longitude": 37.5396, "radius": 14.2 },
+        { "flag": 0, "id": 2, "latitude": 55.7516, "longitude": 37.5601, "radius": 13.8 },
+        { "flag": 1, "id": 3, "latitude": 55.7539, "longitude": 37.5837, "radius": 12.1 },
+        { "flag": 0, "id": 4, "latitude": 55.7521, "longitude": 37.6077, "radius": 15.4 },
+        { "flag": 0, "id": 5, "latitude": 55.7497, "longitude": 37.6305, "radius": 16.0 },
+        { "flag": 2, "id": 6, "latitude": 55.7520, "longitude": 37.6541, "radius": 13.3 },
+        { "flag": 0, "id": 7, "latitude": 55.7585, "longitude": 37.6756, "radius": 12.7 }
+      ]
+    }
+  ]
+}

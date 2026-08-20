@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Карта маршрута — просмотр JSON</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(16, 25, 39, .94);
+      --panel-solid: #101927;
+      --panel-soft: #182437;
+      --line: rgba(255, 255, 255, .12);
+      --muted: #9caec3;
+      --text: #f4f7fb;
+      --accent: #65e2b7;
+      --accent-dark: #0d6b56;
+      --warning: #ffbe55;
+      --danger: #ff6f78;
+      --shadow: 0 18px 60px rgba(0, 0, 0, .38);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #0b111b;
+    }
+
+    button, select, input { font: inherit; }
+    button { color: inherit; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 22px;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(61, 183, 147, .16), transparent 34%),
+        var(--panel-solid);
+      border-right: 1px solid var(--line);
+      box-shadow: 12px 0 40px rgba(0, 0, 0, .18);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      color: #062c23;
+      background: linear-gradient(145deg, #7df1ca, #3db793);
+      box-shadow: 0 10px 28px rgba(61, 183, 147, .25);
+    }
+    .brand-mark svg { width: 24px; height: 24px; }
+    .brand-title { margin: 0; font-size: 16px; font-weight: 740; letter-spacing: -.01em; }
+    .brand-subtitle { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+
+    .open-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      width: 100%;
+      min-height: 48px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 14px;
+      color: #062c23;
+      background: linear-gradient(135deg, #7df1ca, #52d5aa);
+      font-weight: 750;
+      cursor: pointer;
+      box-shadow: 0 10px 26px rgba(61, 183, 147, .2);
+      transition: transform .16s ease, filter .16s ease;
+    }
+    .open-button:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    .open-button:active { transform: translateY(0); }
+    .open-button svg { width: 19px; height: 19px; }
+
+    .hint { margin: 11px 4px 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .link-button {
+      padding: 0;
+      border: 0;
+      color: var(--accent);
+      background: none;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .file-card {
+      display: none;
+      margin-top: 22px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .035);
+    }
+    .file-card.visible { display: block; }
+    .file-name {
+      margin: 0 0 4px;
+      overflow: hidden;
+      font-size: 14px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-meta { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-top: 14px;
+    }
+    .stat {
+      min-width: 0;
+      padding: 11px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .045);
+    }
+    .stat-value { display: block; font-size: 16px; font-weight: 760; }
+    .stat-label { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+    .line-list {
+      min-height: 0;
+      margin-top: 18px;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: #35445a transparent;
+    }
+    .line-list:empty { display: none; }
+    .line-item {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 8px;
+      border-top: 1px solid rgba(255, 255, 255, .07);
+      font-size: 12px;
+    }
+    .line-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255, 255, 255, .04); }
+    .line-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .line-count { color: var(--muted); }
+
+    .sidebar-footer { margin-top: auto; padding-top: 18px; color: #73859b; font-size: 11px; line-height: 1.5; }
+
+    .map-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #162131; }
+    #map { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
+    #map.dragging { cursor: grabbing; }
+    .tile-layer { position: absolute; inset: 0; overflow: hidden; }
+    .tile-layer img {
+      position: absolute;
+      width: 256px;
+      height: 256px;
+      border: 0;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+    #labels { pointer-events: none; }
+    #routeCanvas { position: absolute; inset: 0; pointer-events: none; }
+
+    .topbar {
+      position: absolute;
+      z-index: 10;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      pointer-events: none;
+    }
+    .map-title {
+      min-width: 0;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .map-title strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+    .map-title span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+
+    .layer-switcher {
+      display: flex;
+      gap: 3px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      pointer-events: auto;
+    }
+    .layer-button {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 9px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .layer-button.active { color: var(--text); background: rgba(255, 255, 255, .11); }
+
+    .map-controls {
+      position: absolute;
+      z-index: 10;
+      right: 18px;
+      bottom: 34px;
+      display: grid;
+      gap: 8px;
+    }
+    .control-stack {
+      display: grid;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .map-control {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      cursor: pointer;
+    }
+    .map-control:last-child { border-bottom: 0; }
+    .map-control:hover { background: rgba(255, 255, 255, .08); }
+    .map-control svg { width: 19px; height: 19px; }
+
+    .empty-state {
+      position: absolute;
+      z-index: 8;
+      top: 50%;
+      left: 50%;
+      width: min(430px, calc(100% - 42px));
+      padding: 28px;
+      border: 1px solid rgba(255, 255, 255, .15);
+      border-radius: 22px;
+      background: rgba(13, 22, 34, .89);
+      box-shadow: var(--shadow);
+      text-align: center;
+      transform: translate(-50%, -50%);
+      backdrop-filter: blur(18px);
+    }
+    .empty-icon {
+      display: grid;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 17px;
+      border-radius: 18px;
+      color: var(--accent);
+      background: rgba(101, 226, 183, .12);
+    }
+    .empty-icon svg { width: 30px; height: 30px; }
+    .empty-state h1 { margin: 0; font-size: clamp(19px, 2vw, 24px); letter-spacing: -.02em; }
+    .empty-state p { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    .drop-overlay {
+      position: absolute;
+      z-index: 40;
+      inset: 18px;
+      display: none;
+      place-items: center;
+      border: 2px dashed rgba(101, 226, 183, .75);
+      border-radius: 24px;
+      color: var(--accent);
+      background: rgba(9, 20, 29, .88);
+      font-size: 18px;
+      font-weight: 750;
+      backdrop-filter: blur(12px);
+      pointer-events: none;
+    }
+    .drop-overlay.visible { display: grid; }
+
+    .toast {
+      position: absolute;
+      z-index: 50;
+      left: 50%;
+      bottom: 28px;
+      max-width: min(520px, calc(100% - 36px));
+      padding: 12px 16px;
+      border: 1px solid rgba(255, 111, 120, .35);
+      border-radius: 13px;
+      color: #ffe6e8;
+      background: rgba(92, 26, 34, .95);
+      box-shadow: var(--shadow);
+      font-size: 13px;
+      line-height: 1.45;
+      opacity: 0;
+      transform: translate(-50%, 14px);
+      transition: opacity .2s ease, transform .2s ease;
+      pointer-events: none;
+    }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    .point-card {
+      position: absolute;
+      z-index: 15;
+      display: none;
+      width: min(260px, calc(100% - 30px));
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      backdrop-filter: blur(14px);
+      pointer-events: auto;
+    }
+    .point-card.visible { display: block; }
+    .point-card-title { margin: 0 20px 10px 0; font-size: 13px; font-weight: 750; }
+    .point-card dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 0; }
+    .point-card dt { color: var(--muted); }
+    .point-card dd { margin: 0; overflow-wrap: anywhere; text-align: right; }
+    .point-card-close {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 27px;
+      height: 27px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+    }
+    .point-card-close:hover { color: var(--text); background: rgba(255, 255, 255, .08); }
+
+    .attribution {
+      position: absolute;
+      z-index: 9;
+      right: 8px;
+      bottom: 7px;
+      padding: 3px 6px;
+      border-radius: 5px;
+      color: #dce5ef;
+      background: rgba(0, 0, 0, .55);
+      font-size: 9px;
+    }
+    .attribution a { color: inherit; }
+
+    @media (max-width: 760px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar {
+        position: absolute;
+        z-index: 30;
+        top: 12px;
+        left: 12px;
+        width: min(290px, calc(100% - 84px));
+        height: auto;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+      .brand, .hint, .file-card, .line-list, .sidebar-footer { display: none !important; }
+      .open-button { min-height: 42px; border-radius: 11px; }
+      .topbar { top: 66px; left: 12px; right: 12px; align-items: flex-start; }
+      .map-title { max-width: calc(100% - 20px); }
+      .layer-switcher { position: absolute; top: -54px; right: 0; }
+      .layer-button { padding: 0 9px; }
+      .empty-state { margin-top: 26px; }
+      .map-controls { right: 12px; bottom: 30px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 18.5 8.5 6l7 12.5L20 8" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="4" cy="18.5" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="8.5" cy="6" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="15.5" cy="18.5" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="20" cy="8" r="2" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div>
+          <p class="brand-title">Карта маршрута</p>
+          <p class="brand-subtitle">Локальный просмотр JSON</p>
+        </div>
+      </div>
+
+      <button class="open-button" id="openButton" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M3.5 18.5 5.7 8.8A2 2 0 0 1 7.65 7.25h11.8a1.5 1.5 0 0 1 1.46 1.84l-2.1 9.05a2 2 0 0 1-1.95 1.55H5.45a2 2 0 0 1-1.95-2.44L5 5.8A2 2 0 0 1 6.98 4h4.08l2 2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Открыть JSON-файл
+      </button>
+      <input id="fileInput" type="file" accept=".json,.geojson,application/json,application/geo+json" hidden>
+      <p class="hint">Можно также перетащить файл на карту или <button class="link-button" id="demoButton" type="button">открыть пример</button>.</p>
+
+      <section class="file-card" id="fileCard" aria-live="polite">
+        <p class="file-name" id="fileName"></p>
+        <p class="file-meta" id="fileMeta"></p>
+        <div class="stats">
+          <div class="stat"><span class="stat-value" id="statLines">—</span><span class="stat-label">линий / объектов</span></div>
+          <div class="stat"><span class="stat-value" id="statPoints">—</span><span class="stat-label">точек</span></div>
+          <div class="stat"><span class="stat-value" id="statLength">—</span><span class="stat-label">длина</span></div>
+          <div class="stat"><span class="stat-value" id="statSkipped">—</span><span class="stat-label">пропущено</span></div>
+        </div>
+      </section>
+
+      <div class="line-list" id="lineList" aria-label="Объекты файла"></div>
+
+      <div class="sidebar-footer">
+        Файл обрабатывается только в браузере и никуда не отправляется.<br>
+        Подложка карты загружается через интернет.
+      </div>
+    </aside>
+
+    <main class="map-shell" id="mapShell">
+      <div id="map" role="application" aria-label="Интерактивная карта">
+        <div class="tile-layer" id="tiles"></div>
+        <div class="tile-layer" id="labels"></div>
+        <canvas id="routeCanvas"></canvas>
+      </div>
+
+      <div class="topbar">
+        <div class="map-title">
+          <strong id="mapTitle">Россия</strong>
+          <span id="mapSubtitle">Откройте JSON, чтобы увидеть маршрут</span>
+        </div>
+        <div class="layer-switcher" role="group" aria-label="Подложка карты">
+          <button class="layer-button active" type="button" data-layer="satellite">Спутник</button>
+          <button class="layer-button" type="button" data-layer="hybrid">Гибрид</button>
+          <button class="layer-button" type="button" data-layer="map">Схема</button>
+        </div>
+      </div>
+
+      <div class="map-controls">
+        <div class="control-stack">
+          <button class="map-control" id="zoomIn" type="button" title="Приблизить" aria-label="Приблизить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+          </button>
+          <button class="map-control" id="zoomOut" type="button" title="Отдалить" aria-label="Отдалить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="control-stack">
+          <button class="map-control" id="fitButton" type="button" title="Показать весь маршрут" aria-label="Показать весь маршрут">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <section class="empty-state" id="emptyState">
+        <div class="empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="m3.5 6.5 5-3 7 3 5-3v14l-5 3-7-3-5 3v-14Z" stroke-linejoin="round"/>
+            <path d="M8.5 3.5v14M15.5 6.5v14"/>
+          </svg>
+        </div>
+        <h1>Маршрут появится здесь</h1>
+        <p>Откройте JSON с массивом <b>lines / points</b> или стандартный GeoJSON. Масштаб и положение карты подберутся автоматически.</p>
+      </section>
+
+      <div class="drop-overlay" id="dropOverlay">Отпустите файл, чтобы открыть</div>
+      <div class="toast" id="toast" role="alert"></div>
+
+      <aside class="point-card" id="pointCard">
+        <button class="point-card-close" id="pointClose" type="button" aria-label="Закрыть">×</button>
+        <p class="point-card-title" id="pointTitle">Точка</p>
+        <dl id="pointDetails"></dl>
+      </aside>
+
+      <div class="attribution" id="attribution"></div>
+    </main>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const TILE_SIZE = 256;
+    const MIN_ZOOM = 2;
+    const MAX_ZOOM = 20;
+    const MAX_FILE_BYTES = 50 * 1024 * 1024;
+    const COLORS = ['#65e2b7', '#ffbe55', '#70b7ff', '#f58ed5', '#c99cff', '#ff817a', '#a9db65', '#67d5e8'];
+    const RUSSIAN_NUMBER = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
+
+    const BASEMAPS = {
+      satellite: {
+        tile: 'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        label: null,
+        maxZoom: 20,
+        attribution: 'Картографические данные © Google'
+      },
+      hybrid: {
+        tile: 'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        label: null,
+        maxZoom: 20,
+        attribution: 'Картографические данные © Google'
+      },
+      map: {
+        tile: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        label: null,
+        maxZoom: 19,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>'
+      }
+    };
+
+    const elements = {
+      map: document.getElementById('map'),
+      mapShell: document.getElementById('mapShell'),
+      tiles: document.getElementById('tiles'),
+      labels: document.getElementById('labels'),
+      canvas: document.getElementById('routeCanvas'),
+      openButton: document.getElementById('openButton'),
+      fileInput: document.getElementById('fileInput'),
+      demoButton: document.getElementById('demoButton'),
+      fileCard: document.getElementById('fileCard'),
+      fileName: document.getElementById('fileName'),
+      fileMeta: document.getElementById('fileMeta'),
+      statLines: document.getElementById('statLines'),
+      statPoints: document.getElementById('statPoints'),
+      statLength: document.getElementById('statLength'),
+      statSkipped: document.getElementById('statSkipped'),
+      lineList: document.getElementById('lineList'),
+      emptyState: document.getElementById('emptyState'),
+      dropOverlay: document.getElementById('dropOverlay'),
+      toast: document.getElementById('toast'),
+      mapTitle: document.getElementById('mapTitle'),
+      mapSubtitle: document.getElementById('mapSubtitle'),
+      pointCard: document.getElementById('pointCard'),
+      pointTitle: document.getElementById('pointTitle'),
+      pointDetails: document.getElementById('pointDetails'),
+      pointClose: document.getElementById('pointClose'),
+      attribution: document.getElementById('attribution')
+    };
+
+    const state = {
+      center: { lat: 58.0, lon: 40.0 },
+      zoom: 4,
+      layer: readSavedLayer(),
+      model: null,
+      frame: 0,
+      drag: null,
+      dragDepth: 0,
+      toastTimer: 0
+    };
+
+    function readSavedLayer() {
+      try {
+        const value = localStorage.getItem('route-map-layer');
+        return BASEMAPS[value] ? value : 'satellite';
+      } catch (_) {
+        return 'satellite';
+      }
+    }
+
+    function saveLayer() {
+      try { localStorage.setItem('route-map-layer', state.layer); } catch (_) { /* local file privacy mode */ }
+    }
+
+    function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+    function modulo(value, divisor) { return ((value % divisor) + divisor) % divisor; }
+    function finite(value) {
+      return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+    }
+
+    function project(lat, lon, zoom) {
+      const size = TILE_SIZE * 2 ** zoom;
+      const safeLat = clamp(Number(lat), -85.05112878, 85.05112878);
+      const sin = Math.sin(safeLat * Math.PI / 180);
+      return {
+        x: (Number(lon) + 180) / 360 * size,
+        y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * size
+      };
+    }
+
+    function unproject(x, y, zoom) {
+      const size = TILE_SIZE * 2 ** zoom;
+      const lon = x / size * 360 - 180;
+      const n = Math.PI - 2 * Math.PI * y / size;
+      const lat = 180 / Math.PI * Math.atan(Math.sinh(n));
+      return { lat: clamp(lat, -85.05112878, 85.05112878), lon: modulo(lon + 180, 360) - 180 };
+    }
+
+    function mapSize() {
+      return { width: elements.map.clientWidth, height: elements.map.clientHeight };
+    }
+
+    function screenPoint(point) {
+      const center = project(state.center.lat, state.center.lon, state.zoom);
+      const world = project(point.lat, point.lon, state.zoom);
+      const size = TILE_SIZE * 2 ** state.zoom;
+      let dx = world.x - center.x;
+      if (dx > size / 2) dx -= size;
+      if (dx < -size / 2) dx += size;
+      const viewport = mapSize();
+      return { x: viewport.width / 2 + dx, y: viewport.height / 2 + world.y - center.y };
+    }
+
+    function tileUrl(template, z, x, y) {
+      return template.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+    }
+
+    function renderTiles() {
+      const viewport = mapSize();
+      if (!viewport.width || !viewport.height) return;
+
+      const zoom = state.zoom;
+      const tileCount = 2 ** zoom;
+      const center = project(state.center.lat, state.center.lon, zoom);
+      const left = center.x - viewport.width / 2;
+      const top = center.y - viewport.height / 2;
+      const startX = Math.floor(left / TILE_SIZE) - 1;
+      const endX = Math.floor((left + viewport.width) / TILE_SIZE) + 1;
+      const startY = Math.max(0, Math.floor(top / TILE_SIZE) - 1);
+      const endY = Math.min(tileCount - 1, Math.floor((top + viewport.height) / TILE_SIZE) + 1);
+      const config = BASEMAPS[state.layer];
+      const baseFragment = document.createDocumentFragment();
+      const labelFragment = document.createDocumentFragment();
+
+      for (let y = startY; y <= endY; y++) {
+        for (let x = startX; x <= endX; x++) {
+          const wrappedX = modulo(x, tileCount);
+          const positionX = Math.round(x * TILE_SIZE - left);
+          const positionY = Math.round(y * TILE_SIZE - top);
+          baseFragment.appendChild(createTile(tileUrl(config.tile, zoom, wrappedX, y), positionX, positionY));
+          if (config.label) {
+            labelFragment.appendChild(createTile(tileUrl(config.label, zoom, wrappedX, y), positionX, positionY));
+          }
+        }
+      }
+
+      elements.tiles.replaceChildren(baseFragment);
+      elements.labels.replaceChildren(labelFragment);
+      elements.attribution.innerHTML = config.attribution;
+    }
+
+    function createTile(src, left, top) {
+      const image = new Image(TILE_SIZE, TILE_SIZE);
+      image.alt = '';
+      image.decoding = 'async';
+      image.draggable = false;
+      image.referrerPolicy = 'no-referrer';
+      image.src = src;
+      image.style.left = left + 'px';
+      image.style.top = top + 'px';
+      return image;
+    }
+
+    function requestRender() {
+      if (state.frame) return;
+      state.frame = requestAnimationFrame(() => {
+        state.frame = 0;
+        renderTiles();
+        renderRoute();
+      });
+    }
+
+    function renderRoute() {
+      const viewport = mapSize();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const canvas = elements.canvas;
+      const pixelWidth = Math.max(1, Math.round(viewport.width * dpr));
+      const pixelHeight = Math.max(1, Math.round(viewport.height * dpr));
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
+      }
+
+      const context = canvas.getContext('2d');
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.clearRect(0, 0, viewport.width, viewport.height);
+      if (!state.model) return;
+
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+
+      for (const track of state.model.tracks) {
+        for (const path of track.paths) {
+          if (path.length < 2) continue;
+          context.beginPath();
+          path.forEach((point, index) => {
+            const position = screenPoint(point);
+            if (index === 0) context.moveTo(position.x, position.y);
+            else context.lineTo(position.x, position.y);
+          });
+          if (track.kind === 'polygon') {
+            context.closePath();
+            context.fillStyle = colorWithAlpha(track.color, .19);
+            context.fill();
+          }
+          context.strokeStyle = 'rgba(2, 11, 18, .76)';
+          context.lineWidth = 7;
+          context.stroke();
+          context.strokeStyle = track.color;
+          context.lineWidth = 3.2;
+          context.stroke();
+        }
+      }
+
+      const showOrdinary = state.model.points.length <= 5000 || state.zoom >= 16;
+      for (const point of state.model.points) {
+        const position = screenPoint(point);
+        if (position.x < -12 || position.y < -12 || position.x > viewport.width + 12 || position.y > viewport.height + 12) continue;
+        const isSpecial = point.role === 'special' || point.role === 'start' || point.role === 'end' || point.role === 'standalone';
+        if (!showOrdinary && !isSpecial) continue;
+        if (!isSpecial && state.zoom < 13) continue;
+        drawPoint(context, position.x, position.y, point);
+      }
+    }
+
+    function drawPoint(context, x, y, point) {
+      let fill = point.color || '#65e2b7';
+      let radius = 2.2;
+      if (point.role === 'start') { fill = '#65e2b7'; radius = 6; }
+      if (point.role === 'end') { fill = '#ff6f78'; radius = 6; }
+      if (point.role === 'special') { fill = '#ffbe55'; radius = 5.5; }
+      if (point.role === 'standalone') { radius = 5.5; }
+      context.beginPath();
+      context.arc(x, y, radius + (radius > 4 ? 2 : 0), 0, Math.PI * 2);
+      context.fillStyle = 'rgba(6, 14, 23, .82)';
+      context.fill();
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fillStyle = fill;
+      context.fill();
+      if (radius > 4) {
+        context.strokeStyle = 'rgba(255,255,255,.9)';
+        context.lineWidth = 1.2;
+        context.stroke();
+      }
+    }
+
+    function colorWithAlpha(hex, alpha) {
+      const value = hex.replace('#', '');
+      const number = Number.parseInt(value, 16);
+      return `rgba(${number >> 16}, ${(number >> 8) & 255}, ${number & 255}, ${alpha})`;
+    }
+
+    function setZoom(nextZoom, anchorX, anchorY) {
+      nextZoom = clamp(Math.round(nextZoom), MIN_ZOOM, BASEMAPS[state.layer].maxZoom || MAX_ZOOM);
+      if (nextZoom === state.zoom) return;
+      const viewport = mapSize();
+      const x = finite(anchorX) ? Number(anchorX) : viewport.width / 2;
+      const y = finite(anchorY) ? Number(anchorY) : viewport.height / 2;
+      const oldCenter = project(state.center.lat, state.center.lon, state.zoom);
+      const anchorWorld = { x: oldCenter.x + x - viewport.width / 2, y: oldCenter.y + y - viewport.height / 2 };
+      const ratio = 2 ** (nextZoom - state.zoom);
+      const nextCenter = {
+        x: anchorWorld.x * ratio - x + viewport.width / 2,
+        y: anchorWorld.y * ratio - y + viewport.height / 2
+      };
+      state.zoom = nextZoom;
+      state.center = unproject(nextCenter.x, nextCenter.y, state.zoom);
+      hidePointCard();
+      requestRender();
+    }
+
+    function fitModel() {
+      if (!state.model || !state.model.points.length) return;
+      const viewport = mapSize();
+      const bounds = state.model.bounds;
+      state.center = { lat: (bounds.minLat + bounds.maxLat) / 2, lon: (bounds.minLon + bounds.maxLon) / 2 };
+      if (Math.abs(bounds.maxLat - bounds.minLat) < 1e-9 && Math.abs(bounds.maxLon - bounds.minLon) < 1e-9) {
+        state.zoom = 17;
+        requestRender();
+        return;
+      }
+      const availableWidth = Math.max(120, viewport.width - 100);
+      const availableHeight = Math.max(120, viewport.height - 100);
+      const maximumZoom = BASEMAPS[state.layer].maxZoom || MAX_ZOOM;
+      for (let zoom = maximumZoom; zoom >= MIN_ZOOM; zoom--) {
+        const northwest = project(bounds.maxLat, bounds.minLon, zoom);
+        const southeast = project(bounds.minLat, bounds.maxLon, zoom);
+        if (Math.abs(southeast.x - northwest.x) <= availableWidth && Math.abs(southeast.y - northwest.y) <= availableHeight) {
+          state.zoom = Math.max(MIN_ZOOM, zoom);
+          requestRender();
+          return;
+        }
+      }
+      state.zoom = MIN_ZOOM;
+      requestRender();
+    }
+
+    function pointFromValue(value, fallbackId) {
+      if (Array.isArray(value) && value.length >= 2 && finite(value[0]) && finite(value[1])) {
+        const lon = Number(value[0]);
+        const lat = Number(value[1]);
+        return validCoordinate(lat, lon) ? { lat, lon, id: fallbackId } : null;
+      }
+      if (!value || typeof value !== 'object') return null;
+      const lat = firstFinite(value.latitude, value.lat, value.y);
+      const lon = firstFinite(value.longitude, value.lon, value.lng, value.x);
+      if (!validCoordinate(lat, lon)) return null;
+      return {
+        lat,
+        lon,
+        id: value.id ?? value.point ?? fallbackId,
+        radius: finite(value.radius) ? Number(value.radius) : null,
+        flag: value.flag ?? 0,
+        properties: value
+      };
+    }
+
+    function firstFinite(...values) {
+      for (const value of values) if (finite(value)) return Number(value);
+      return NaN;
+    }
+
+    function validCoordinate(lat, lon) {
+      return finite(lat) && finite(lon) && Number(lat) >= -90 && Number(lat) <= 90 && Number(lon) >= -180 && Number(lon) <= 180;
+    }
+
+    function parseDocument(root) {
+      if (root && typeof root === 'object' && Array.isArray(root.lines)) return parseRouteJson(root);
+      if (root && typeof root === 'object' && (root.type === 'FeatureCollection' || root.type === 'Feature' || root.type === 'GeometryCollection' || root.coordinates)) {
+        return parseGeoJson(root);
+      }
+      if (Array.isArray(root) || (root && Array.isArray(root.points))) return parsePointArray(Array.isArray(root) ? root : root.points);
+      throw new Error('Не найдены координаты. Ожидается lines/points, GeoJSON или массив точек с latitude и longitude.');
+    }
+
+    function createModel(format) {
+      return {
+        format,
+        tracks: [],
+        points: [],
+        skipped: 0,
+        totalLength: 0,
+        bounds: { minLat: Infinity, maxLat: -Infinity, minLon: Infinity, maxLon: -Infinity }
+      };
+    }
+
+    function includePoint(model, point) {
+      model.points.push(point);
+      model.bounds.minLat = Math.min(model.bounds.minLat, point.lat);
+      model.bounds.maxLat = Math.max(model.bounds.maxLat, point.lat);
+      model.bounds.minLon = Math.min(model.bounds.minLon, point.lon);
+      model.bounds.maxLon = Math.max(model.bounds.maxLon, point.lon);
+    }
+
+    function parseRouteJson(root) {
+      const model = createModel('Маршрут JSON');
+      root.lines.forEach((line, lineIndex) => {
+        if (!line || !Array.isArray(line.points)) return;
+        const color = COLORS[model.tracks.length % COLORS.length];
+        const points = [];
+        line.points.forEach((raw, pointIndex) => {
+          const point = pointFromValue(raw, pointIndex + 1);
+          if (!point) { model.skipped++; return; }
+          point.color = color;
+          point.trackIndex = model.tracks.length;
+          point.trackName = String(line.flag ?? `Линия ${lineIndex + 1}`);
+          point.role = Number(point.flag) !== 0 ? 'special' : 'ordinary';
+          points.push(point);
+        });
+        if (!points.length) return;
+        if (points[0].role === 'ordinary') points[0].role = 'start';
+        if (points.length > 1 && points.at(-1).role === 'ordinary') points.at(-1).role = 'end';
+        points.forEach(point => includePoint(model, point));
+        const measuredLength = pathLength(points);
+        const declaredLength = finite(line.length) && Number(line.length) >= 0 ? Number(line.length) : measuredLength;
+        model.totalLength += declaredLength;
+        model.tracks.push({
+          name: String(line.flag ?? `Линия ${lineIndex + 1}`),
+          kind: 'line',
+          color,
+          paths: [points],
+          pointCount: points.length,
+          length: declaredLength
+        });
+      });
+      if (!model.tracks.length) throw new Error('В массиве lines нет линий с корректными координатами.');
+      return model;
+    }
+
+    function parsePointArray(values) {
+      const model = createModel('Массив точек');
+      const color = COLORS[0];
+      const points = [];
+      values.forEach((raw, index) => {
+        const point = pointFromValue(raw, index + 1);
+        if (!point) { model.skipped++; return; }
+        point.color = color;
+        point.trackName = 'Маршрут';
+        point.role = Number(point.flag) !== 0 ? 'special' : 'ordinary';
+        points.push(point);
+      });
+      if (!points.length) throw new Error('В массиве нет точек с корректными координатами.');
+      points[0].role = 'start';
+      if (points.length > 1) points.at(-1).role = 'end';
+      points.forEach(point => includePoint(model, point));
+      model.totalLength = pathLength(points);
+      model.tracks.push({ name: 'Маршрут', kind: 'line', color, paths: [points], pointCount: points.length, length: model.totalLength });
+      return model;
+    }
+
+    function parseGeoJson(root) {
+      const model = createModel('GeoJSON');
+      const features = root.type === 'FeatureCollection' ? root.features : [root];
+      if (!Array.isArray(features)) throw new Error('Поле features в GeoJSON должно быть массивом.');
+      features.forEach((feature, featureIndex) => {
+        const geometry = feature?.type === 'Feature' ? feature.geometry : feature;
+        const properties = feature?.type === 'Feature' ? (feature.properties || {}) : {};
+        const name = String(properties.name ?? properties.title ?? properties.id ?? `Объект ${featureIndex + 1}`);
+        readGeometry(model, geometry, properties, name, featureIndex);
+      });
+      if (!model.points.length) throw new Error('В GeoJSON нет поддерживаемых координат.');
+      return model;
+    }
+
+    function readGeometry(model, geometry, properties, name, featureIndex) {
+      if (!geometry || typeof geometry !== 'object') { model.skipped++; return; }
+      if (geometry.type === 'GeometryCollection') {
+        (geometry.geometries || []).forEach((child, index) => readGeometry(model, child, properties, `${name} · ${index + 1}`, featureIndex));
+        return;
+      }
+      const color = COLORS[model.tracks.length % COLORS.length];
+      const addRawPath = (rawPath, kind, pathName = name) => {
+        const points = [];
+        (rawPath || []).forEach((coordinate, index) => {
+          const point = pointFromValue(coordinate, index + 1);
+          if (!point) { model.skipped++; return; }
+          point.color = color;
+          point.trackName = pathName;
+          point.properties = properties;
+          point.role = 'ordinary';
+          points.push(point);
+        });
+        if (!points.length) return;
+        if (kind === 'line') {
+          points[0].role = 'start';
+          if (points.length > 1) points.at(-1).role = 'end';
+        }
+        points.forEach(point => includePoint(model, point));
+        const length = kind === 'line' ? pathLength(points) : 0;
+        model.totalLength += length;
+        model.tracks.push({ name: pathName, kind, color, paths: [points], pointCount: points.length, length });
+      };
+
+      switch (geometry.type) {
+        case 'Point': {
+          const point = pointFromValue(geometry.coordinates, featureIndex + 1);
+          if (!point) { model.skipped++; return; }
+          point.color = color;
+          point.trackName = name;
+          point.properties = properties;
+          point.role = 'standalone';
+          includePoint(model, point);
+          model.tracks.push({ name, kind: 'point', color, paths: [], pointCount: 1, length: 0 });
+          break;
+        }
+        case 'MultiPoint':
+          (geometry.coordinates || []).forEach((coordinate, index) => {
+            const point = pointFromValue(coordinate, index + 1);
+            if (!point) { model.skipped++; return; }
+            point.color = color;
+            point.trackName = name;
+            point.properties = properties;
+            point.role = 'standalone';
+            includePoint(model, point);
+          });
+          model.tracks.push({ name, kind: 'point', color, paths: [], pointCount: geometry.coordinates?.length || 0, length: 0 });
+          break;
+        case 'LineString':
+          addRawPath(geometry.coordinates, 'line');
+          break;
+        case 'MultiLineString':
+          (geometry.coordinates || []).forEach((path, index) => addRawPath(path, 'line', `${name} · ${index + 1}`));
+          break;
+        case 'Polygon': {
+          const paths = [];
+          let count = 0;
+          (geometry.coordinates || []).forEach(ring => {
+            const points = [];
+            ring.forEach((coordinate, index) => {
+              const point = pointFromValue(coordinate, index + 1);
+              if (!point) { model.skipped++; return; }
+              point.color = color;
+              point.trackName = name;
+              point.properties = properties;
+              point.role = 'ordinary';
+              points.push(point);
+              includePoint(model, point);
+            });
+            if (points.length) { paths.push(points); count += points.length; }
+          });
+          if (paths.length) model.tracks.push({ name, kind: 'polygon', color, paths, pointCount: count, length: 0 });
+          break;
+        }
+        case 'MultiPolygon':
+          (geometry.coordinates || []).forEach((polygon, index) => readGeometry(model, { type: 'Polygon', coordinates: polygon }, properties, `${name} · ${index + 1}`, featureIndex));
+          break;
+        default:
+          model.skipped++;
+      }
+    }
+
+    function haversine(a, b) {
+      const radius = 6371008.8;
+      const lat1 = a.lat * Math.PI / 180;
+      const lat2 = b.lat * Math.PI / 180;
+      const dLat = lat2 - lat1;
+      const dLon = (b.lon - a.lon) * Math.PI / 180;
+      const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * radius * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+    }
+
+    function pathLength(points) {
+      let result = 0;
+      for (let index = 1; index < points.length; index++) result += haversine(points[index - 1], points[index]);
+      return result;
+    }
+
+    function formatLength(meters) {
+      if (!finite(meters)) return '—';
+      return meters >= 1000 ? `${RUSSIAN_NUMBER.format(meters / 1000)} км` : `${RUSSIAN_NUMBER.format(meters)} м`;
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === null || bytes === undefined || !finite(bytes)) return '';
+      if (bytes >= 1024 * 1024) return `${RUSSIAN_NUMBER.format(bytes / 1024 / 1024)} МБ`;
+      if (bytes >= 1024) return `${RUSSIAN_NUMBER.format(bytes / 1024)} КБ`;
+      return `${bytes} Б`;
+    }
+
+    async function loadFile(file) {
+      if (!file) return;
+      if (file.size > MAX_FILE_BYTES) {
+        showToast('Файл больше 50 МБ. Для безопасной работы браузера выберите файл меньшего размера.');
+        return;
+      }
+      if (!/\.(json|geojson)$/i.test(file.name)) {
+        showToast('Выберите файл с расширением .json или .geojson.');
+        return;
+      }
+      try {
+        const text = (await file.text()).replace(/^\uFEFF/, '');
+        const root = JSON.parse(text);
+        const model = parseDocument(root);
+        showModel(model, file.name, file.size);
+      } catch (error) {
+        const message = error instanceof SyntaxError ? `JSON содержит синтаксическую ошибку: ${error.message}` : error.message;
+        showToast(message || 'Не удалось открыть файл.');
+      } finally {
+        elements.fileInput.value = '';
+      }
+    }
+
+    function showModel(model, name, size) {
+      state.model = model;
+      elements.emptyState.hidden = true;
+      elements.fileCard.classList.add('visible');
+      elements.fileName.textContent = name;
+      elements.fileMeta.textContent = [model.format, formatFileSize(size)].filter(Boolean).join(' · ');
+      elements.statLines.textContent = RUSSIAN_NUMBER.format(model.tracks.length);
+      elements.statPoints.textContent = RUSSIAN_NUMBER.format(model.points.length);
+      elements.statLength.textContent = formatLength(model.totalLength);
+      elements.statSkipped.textContent = RUSSIAN_NUMBER.format(model.skipped);
+      elements.mapTitle.textContent = name;
+      elements.mapSubtitle.textContent = `${model.format} · ${RUSSIAN_NUMBER.format(model.points.length)} точек`;
+      renderLineList(model);
+      hidePointCard();
+      fitModel();
+    }
+
+    function renderLineList(model) {
+      const fragment = document.createDocumentFragment();
+      model.tracks.slice(0, 100).forEach(track => {
+        const item = document.createElement('div');
+        item.className = 'line-item';
+        const dot = document.createElement('span');
+        dot.className = 'line-dot';
+        dot.style.background = track.color;
+        const name = document.createElement('span');
+        name.className = 'line-name';
+        name.textContent = track.name;
+        name.title = track.name;
+        const count = document.createElement('span');
+        count.className = 'line-count';
+        count.textContent = `${RUSSIAN_NUMBER.format(track.pointCount)} т.`;
+        item.append(dot, name, count);
+        fragment.appendChild(item);
+      });
+      if (model.tracks.length > 100) {
+        const more = document.createElement('div');
+        more.className = 'line-item';
+        more.textContent = `Ещё ${model.tracks.length - 100} объектов`;
+        fragment.appendChild(more);
+      }
+      elements.lineList.replaceChildren(fragment);
+    }
+
+    function loadDemo() {
+      const demo = {
+        version: '1',
+        lines: [
+          {
+            flag: 'Демонстрационный маршрут',
+            points: [
+              { id: 1, latitude: 55.7486, longitude: 37.5396, radius: 14.2, flag: 0 },
+              { id: 2, latitude: 55.7516, longitude: 37.5601, radius: 13.8, flag: 0 },
+              { id: 3, latitude: 55.7539, longitude: 37.5837, radius: 12.1, flag: 1 },
+              { id: 4, latitude: 55.7521, longitude: 37.6077, radius: 15.4, flag: 0 },
+              { id: 5, latitude: 55.7497, longitude: 37.6305, radius: 16.0, flag: 0 },
+              { id: 6, latitude: 55.7520, longitude: 37.6541, radius: 13.3, flag: 2 },
+              { id: 7, latitude: 55.7585, longitude: 37.6756, radius: 12.7, flag: 0 }
+            ]
+          }
+        ]
+      };
+      showModel(parseDocument(demo), 'Пример маршрута.json', null);
+    }
+
+    function showToast(message) {
+      clearTimeout(state.toastTimer);
+      elements.toast.textContent = message;
+      elements.toast.classList.add('visible');
+      state.toastTimer = setTimeout(() => elements.toast.classList.remove('visible'), 6500);
+    }
+
+    function showNearestPoint(clientX, clientY) {
+      if (!state.model) return;
+      const rect = elements.map.getBoundingClientRect();
+      const local = { x: clientX - rect.left, y: clientY - rect.top };
+      let best = null;
+      let bestDistance = 14;
+      for (const point of state.model.points) {
+        const screen = screenPoint(point);
+        const distance = Math.hypot(screen.x - local.x, screen.y - local.y);
+        if (distance < bestDistance) { best = point; bestDistance = distance; }
+      }
+      if (!best) { hidePointCard(); return; }
+      showPointCard(best, local.x, local.y);
+    }
+
+    function showPointCard(point, x, y) {
+      const rows = [
+        ['Маршрут', point.trackName || '—'],
+        ['ID', point.id ?? '—'],
+        ['Широта', Number(point.lat).toFixed(7)],
+        ['Долгота', Number(point.lon).toFixed(7)]
+      ];
+      if (point.radius !== null && point.radius !== undefined) rows.push(['Радиус', point.radius]);
+      if (point.flag !== undefined && point.flag !== null) rows.push(['Флаг', point.flag]);
+      elements.pointTitle.textContent = point.role === 'start' ? 'Начало маршрута' : point.role === 'end' ? 'Конец маршрута' : 'Точка маршрута';
+      const fragment = document.createDocumentFragment();
+      rows.forEach(([term, value]) => {
+        const dt = document.createElement('dt');
+        const dd = document.createElement('dd');
+        dt.textContent = term;
+        dd.textContent = String(value);
+        fragment.append(dt, dd);
+      });
+      elements.pointDetails.replaceChildren(fragment);
+      elements.pointCard.classList.add('visible');
+      const shellRect = elements.mapShell.getBoundingClientRect();
+      const width = elements.pointCard.offsetWidth;
+      const height = elements.pointCard.offsetHeight;
+      elements.pointCard.style.left = `${clamp(x + 18, 10, shellRect.width - width - 10)}px`;
+      elements.pointCard.style.top = `${clamp(y + 18, 10, shellRect.height - height - 10)}px`;
+    }
+
+    function hidePointCard() { elements.pointCard.classList.remove('visible'); }
+
+    elements.openButton.addEventListener('click', () => elements.fileInput.click());
+    elements.demoButton.addEventListener('click', loadDemo);
+    elements.fileInput.addEventListener('change', event => loadFile(event.target.files[0]));
+    document.getElementById('zoomIn').addEventListener('click', () => setZoom(state.zoom + 1));
+    document.getElementById('zoomOut').addEventListener('click', () => setZoom(state.zoom - 1));
+    document.getElementById('fitButton').addEventListener('click', fitModel);
+    elements.pointClose.addEventListener('click', hidePointCard);
+
+    document.querySelectorAll('.layer-button').forEach(button => {
+      button.classList.toggle('active', button.dataset.layer === state.layer);
+      button.addEventListener('click', () => {
+        state.layer = button.dataset.layer;
+        state.zoom = Math.min(state.zoom, BASEMAPS[state.layer].maxZoom || MAX_ZOOM);
+        document.querySelectorAll('.layer-button').forEach(item => item.classList.toggle('active', item === button));
+        saveLayer();
+        requestRender();
+      });
+    });
+
+    elements.map.addEventListener('wheel', event => {
+      event.preventDefault();
+      const rect = elements.map.getBoundingClientRect();
+      setZoom(state.zoom + (event.deltaY < 0 ? 1 : -1), event.clientX - rect.left, event.clientY - rect.top);
+    }, { passive: false });
+
+    elements.map.addEventListener('pointerdown', event => {
+      if (event.button !== 0 && event.pointerType === 'mouse') return;
+      elements.map.setPointerCapture(event.pointerId);
+      state.drag = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        center: project(state.center.lat, state.center.lon, state.zoom),
+        moved: false
+      };
+      elements.map.classList.add('dragging');
+    });
+
+    elements.map.addEventListener('pointermove', event => {
+      if (!state.drag || state.drag.id !== event.pointerId) return;
+      const dx = event.clientX - state.drag.startX;
+      const dy = event.clientY - state.drag.startY;
+      if (Math.hypot(dx, dy) > 4) state.drag.moved = true;
+      state.center = unproject(state.drag.center.x - dx, state.drag.center.y - dy, state.zoom);
+      hidePointCard();
+      requestRender();
+    });
+
+    function finishPointer(event) {
+      if (!state.drag || state.drag.id !== event.pointerId) return;
+      const wasMoved = state.drag.moved;
+      state.drag = null;
+      elements.map.classList.remove('dragging');
+      if (!wasMoved) showNearestPoint(event.clientX, event.clientY);
+    }
+    elements.map.addEventListener('pointerup', finishPointer);
+    elements.map.addEventListener('pointercancel', finishPointer);
+
+    elements.mapShell.addEventListener('dragenter', event => {
+      event.preventDefault();
+      state.dragDepth++;
+      elements.dropOverlay.classList.add('visible');
+    });
+    elements.mapShell.addEventListener('dragover', event => event.preventDefault());
+    elements.mapShell.addEventListener('dragleave', event => {
+      event.preventDefault();
+      state.dragDepth = Math.max(0, state.dragDepth - 1);
+      if (!state.dragDepth) elements.dropOverlay.classList.remove('visible');
+    });
+    elements.mapShell.addEventListener('drop', event => {
+      event.preventDefault();
+      state.dragDepth = 0;
+      elements.dropOverlay.classList.remove('visible');
+      loadFile(event.dataTransfer.files[0]);
+    });
+
+    window.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        elements.fileInput.click();
+      }
+      if (event.key === 'Escape') hidePointCard();
+      if (event.key === '+' || event.key === '=') setZoom(state.zoom + 1);
+      if (event.key === '-') setZoom(state.zoom - 1);
+    });
+
+    new ResizeObserver(requestRender).observe(elements.map);
+    requestRender();
+  })();
+  </script>
+</body>
+</html>
